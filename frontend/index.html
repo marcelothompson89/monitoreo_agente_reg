@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agente de Monitoreo Regulatorio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Agente de Monitoreo Regulatorio</h1>
+        <p>CSV, perfil de empresa, evaluación automática y reporte semanal.</p>
+      </div>
+      <button id="refreshBtn" class="secondary">Actualizar</button>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <h2>Cargar CSV</h2>
+        <form id="uploadForm" class="stack">
+          <input id="csvFile" type="file" accept=".csv" />
+          <button type="submit">Subir alertas</button>
+        </form>
+        <p id="uploadStatus" class="status"></p>
+      </section>
+
+      <section class="panel profile-panel">
+        <h2>Perfil de empresa</h2>
+        <form id="profileForm" class="grid-form">
+          <label>Nombre de empresa<input name="company_name" required /></label>
+          <label>Industria<input name="industry" /></label>
+          <label>Países<input name="countries" placeholder="Argentina, México, Brasil" /></label>
+          <label>Categorías de producto<input name="product_categories" placeholder="OTC, cosmética, alimentos" /></label>
+          <label>Palabras clave<input name="keywords" placeholder="rotulado, registro, farmacovigilancia" /></label>
+          <label>Temas excluidos<input name="excluded_topics" placeholder="armas, minería" /></label>
+          <label>Áreas internas<input name="internal_areas" placeholder="Regulatorio, Legal, Calidad" /></label>
+          <label class="full">Notas adicionales<textarea name="notes" rows="3"></textarea></label>
+          <button type="submit">Guardar perfil</button>
+        </form>
+        <p id="profileStatus" class="status"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Filtros de alertas</h2>
+        <div class="filters">
+          <label>País<select id="filterCountry"><option value="">Todos</option></select></label>
+          <label>Institución<select id="filterInstitution"><option value="">Todas</option></select></label>
+          <label>Categoría<select id="filterCategory"><option value="">Todas</option></select></label>
+          <label>Fecha desde<input id="filterDateFrom" type="date" /></label>
+          <label>Fecha hasta<input id="filterDateTo" type="date" /></label>
+        </div>
+      </section>
+
+      <section class="panel actions-panel">
+        <div>
+          <h2>Evaluar alertas</h2>
+          <p>Procesa las alertas filtradas que todavía no fueron evaluadas para el perfil activo.</p>
+        </div>
+        <div class="action-row">
+          <label>Límite por corrida<input id="evaluateLimit" type="number" min="1" max="500" value="100" /></label>
+          <button id="evaluateBtn">Evaluar alertas pendientes</button>
+        </div>
+        <p id="evaluateStatus" class="status"></p>
+      </section>
+
+      <section class="metrics" id="metrics"></section>
+
+      <section class="panel dashboard-panel">
+        <div class="section-head">
+          <h2>Dashboard</h2>
+          <div class="filters compact">
+            <label>Prioridad
+              <select id="dashPriority">
+                <option value="">Todas</option>
+                <option value="alta">Alta</option>
+                <option value="media">Media</option>
+                <option value="baja">Baja</option>
+                <option value="no_relevante">No relevante</option>
+              </select>
+            </label>
+            <label>País<select id="dashCountry"><option value="">Todos</option></select></label>
+            <label>Institución<select id="dashInstitution"><option value="">Todas</option></select></label>
+            <label>Revisión
+              <select id="dashReview">
+                <option value="">Todas</option>
+                <option value="true">Requiere</option>
+                <option value="false">No requiere</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>País</th>
+                <th>Institución</th>
+                <th>Título</th>
+                <th>Categoría</th>
+                <th>Prioridad</th>
+                <th>Score</th>
+                <th>Resumen de impacto</th>
+                <th>Acción recomendada</th>
+                <th>Fuente</th>
+              </tr>
+            </thead>
+            <tbody id="assessmentRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel report-panel">
+        <div class="section-head">
+          <h2>Informe semanal</h2>
+          <button id="downloadReportBtn">Descargar .md</button>
+        </div>
+        <textarea id="reportText" rows="18" readonly></textarea>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
