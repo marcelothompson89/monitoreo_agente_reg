@@ -141,6 +141,36 @@ def mock_evaluate_alert(alert: dict[str, Any], company_profile: dict[str, Any]) 
     }
 
 
+# Campos que se envían a OpenAI. Se excluyen id, created_at, email_recipients (PII),
+# days_back, alert_sources y last_agent_run: no aportan al análisis y gastan tokens.
+_PROFILE_FIELDS_FOR_AI = (
+    "company_name",
+    "industry",
+    "countries",
+    "product_categories",
+    "keywords",
+    "excluded_topics",
+    "internal_areas",
+    "company_description",
+    "notes",
+)
+_ALERT_FIELDS_FOR_AI = (
+    "title",
+    "description",
+    "source_type",
+    "category",
+    "country",
+    "institution",
+    "presentation_date",
+    "full_text",
+)
+
+
+def _pick(data: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
+    """Devuelve solo los campos indicados que tengan algún valor."""
+    return {key: data[key] for key in fields if data.get(key) not in (None, "", [], {})}
+
+
 def _extract_json(content: str) -> dict[str, Any]:
     content = content.strip()
     if content.startswith("```"):
@@ -179,8 +209,8 @@ def evaluate_alert(alert: dict[str, Any], company_profile: dict[str, Any]) -> di
 
         client = OpenAI()
         prompt = PROMPT_TEMPLATE.format(
-            company_profile=json.dumps(company_profile, ensure_ascii=False, indent=2),
-            alert=json.dumps(alert, ensure_ascii=False, indent=2),
+            company_profile=json.dumps(_pick(company_profile, _PROFILE_FIELDS_FOR_AI), ensure_ascii=False, indent=2),
+            alert=json.dumps(_pick(alert, _ALERT_FIELDS_FOR_AI), ensure_ascii=False, indent=2),
         )
         response = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),

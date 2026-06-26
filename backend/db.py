@@ -55,6 +55,7 @@ def init_db() -> None:
                 excluded_topics TEXT,
                 internal_areas TEXT,
                 notes TEXT,
+                company_description TEXT DEFAULT '',
                 created_at TEXT NOT NULL
             );
 
@@ -80,8 +81,41 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_assessments_company
                 ON alert_assessments(company_id, priority, requires_human_review);
+
+            CREATE TABLE IF NOT EXISTS agent_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                date_from TEXT,
+                fetched INTEGER DEFAULT 0,
+                inserted INTEGER DEFAULT 0,
+                evaluated INTEGER DEFAULT 0,
+                alert_ids TEXT,
+                email_sent INTEGER DEFAULT 0,
+                report_markdown TEXT,
+                FOREIGN KEY(company_id) REFERENCES company_profiles(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_company
+                ON agent_runs(company_id, started_at);
             """
         )
+        # Migrations for existing DBs
+        migrations = [
+            "ALTER TABLE company_profiles ADD COLUMN company_description TEXT DEFAULT ''",
+            "ALTER TABLE company_profiles ADD COLUMN email_recipients TEXT DEFAULT ''",
+            "ALTER TABLE company_profiles ADD COLUMN days_back INTEGER DEFAULT 7",
+            "ALTER TABLE company_profiles ADD COLUMN alert_sources TEXT DEFAULT ''",
+            "ALTER TABLE company_profiles ADD COLUMN last_agent_run TEXT DEFAULT NULL",
+            "ALTER TABLE company_profiles ADD COLUMN agent_date_from TEXT DEFAULT ''",
+            "ALTER TABLE company_profiles ADD COLUMN agent_date_to TEXT DEFAULT ''",
+            "ALTER TABLE company_profiles ADD COLUMN agent_max_eval INTEGER DEFAULT 100",
+        ]
+        for sql in migrations:
+            try:
+                conn.execute(sql)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -104,7 +138,7 @@ def hydrate_profile(row: sqlite3.Row | None) -> dict[str, Any] | None:
     profile = row_to_dict(row)
     if not profile:
         return None
-    for key in ["countries", "product_categories", "keywords", "excluded_topics", "internal_areas"]:
+    for key in ["industry", "countries", "product_categories", "keywords", "excluded_topics", "internal_areas", "email_recipients", "alert_sources"]:
         profile[key] = decode_json_list(profile.get(key))
     return profile
 
@@ -159,38 +193,135 @@ def insert_alert(alert: dict[str, Any]) -> bool:
         return True
 
 
-def get_active_company_profile() -> dict[str, Any] | None:
+def existing_alert_keys(ids: list[str], source_urls: list[str]) -> set[str]:
+    """Devuelve el subconjunto de ids/source_urls que YA existen localmente.
+
+    Sirve para previsualizar cuántas alertas son nuevas (sin insertarlas), usando
+    la misma lógica de deduplicación que insert_alert (id o source_url)."""
+    ids = [i for i in ids if i]
+    urls = [u for u in source_urls if u]
+    if not ids and not urls:
+        return set()
+    clauses: list[str] = []
+    params: list[Any] = []
+    if ids:
+        clauses.append(f"id IN ({','.join('?' for _ in ids)})")
+        params.extend(ids)
+    if urls:
+        clauses.append(f"source_url IN ({','.join('?' for _ in urls)})")
+        params.extend(urls)
+    sql = f"SELECT id, source_url FROM regulatory_alerts WHERE {' OR '.join(clauses)}"
+    keys: set[str] = set()
     with get_connection() as conn:
-        row = conn.execute(
-            "SELECT * FROM company_profiles ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        for row in conn.execute(sql, params).fetchall():
+            keys.add(row["id"])
+            if row["source_url"]:
+                keys.add(row["source_url"])
+    return keys
+
+
+def get_active_company_profile(company_id: int | None = None) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        if company_id:
+            row = conn.execute(
+                "SELECT * FROM company_profiles WHERE id = ?", (company_id,)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM company_profiles ORDER BY id DESC LIMIT 1"
+            ).fetchone()
     return hydrate_profile(row)
 
 
-def save_company_profile(payload: dict[str, Any]) -> dict[str, Any]:
+def get_all_companies() -> list[dict[str, Any]]:
     with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO company_profiles (
-                company_name, industry, countries, product_categories, keywords,
-                excluded_topics, internal_areas, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                payload.get("company_name") or "Empresa sin nombre",
-                payload.get("industry") or "",
-                list_to_json(payload.get("countries")),
-                list_to_json(payload.get("product_categories")),
-                list_to_json(payload.get("keywords")),
-                list_to_json(payload.get("excluded_topics")),
-                list_to_json(payload.get("internal_areas")),
-                payload.get("notes") or "",
-                now_iso(),
-            ),
-        )
-    profile = get_active_company_profile()
+        rows = conn.execute(
+            "SELECT id, company_name, industry, created_at FROM company_profiles ORDER BY id DESC"
+        ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["industry"] = decode_json_list(item.get("industry"))
+        result.append(item)
+    return result
+
+
+def save_company_profile(payload: dict[str, Any]) -> dict[str, Any]:
+    company_id = payload.get("id")
+    new_id: int | None = None
+    with get_connection() as conn:
+        if company_id:
+            conn.execute(
+                """
+                UPDATE company_profiles SET
+                    company_name = ?, industry = ?, countries = ?, product_categories = ?,
+                    keywords = ?, excluded_topics = ?, internal_areas = ?, notes = ?,
+                    company_description = ?, email_recipients = ?, days_back = ?, alert_sources = ?,
+                    agent_date_from = ?, agent_date_to = ?, agent_max_eval = ?
+                WHERE id = ?
+                """,
+                (
+                    payload.get("company_name") or "Empresa sin nombre",
+                    list_to_json(payload.get("industry")),
+                    list_to_json(payload.get("countries")),
+                    list_to_json(payload.get("product_categories")),
+                    list_to_json(payload.get("keywords")),
+                    list_to_json(payload.get("excluded_topics")),
+                    list_to_json(payload.get("internal_areas")),
+                    payload.get("notes") or "",
+                    payload.get("company_description") or "",
+                    list_to_json(payload.get("email_recipients")),
+                    int(payload.get("days_back") or 7),
+                    list_to_json(payload.get("alert_sources")),
+                    payload.get("agent_date_from") or "",
+                    payload.get("agent_date_to") or "",
+                    int(payload.get("agent_max_eval") or 100),
+                    company_id,
+                ),
+            )
+            new_id = int(company_id)
+        else:
+            cursor = conn.execute(
+                """
+                INSERT INTO company_profiles (
+                    company_name, industry, countries, product_categories, keywords,
+                    excluded_topics, internal_areas, notes, company_description,
+                    email_recipients, days_back, alert_sources, agent_date_from,
+                    agent_date_to, agent_max_eval, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload.get("company_name") or "Empresa sin nombre",
+                    list_to_json(payload.get("industry")),
+                    list_to_json(payload.get("countries")),
+                    list_to_json(payload.get("product_categories")),
+                    list_to_json(payload.get("keywords")),
+                    list_to_json(payload.get("excluded_topics")),
+                    list_to_json(payload.get("internal_areas")),
+                    payload.get("notes") or "",
+                    payload.get("company_description") or "",
+                    list_to_json(payload.get("email_recipients")),
+                    int(payload.get("days_back") or 7),
+                    list_to_json(payload.get("alert_sources")),
+                    payload.get("agent_date_from") or "",
+                    payload.get("agent_date_to") or "",
+                    int(payload.get("agent_max_eval") or 100),
+                    now_iso(),
+                ),
+            )
+            new_id = cursor.lastrowid  # capture ID before commit
+    # Read AFTER the with-block so the commit is visible to the new connection
+    profile = get_active_company_profile(new_id)
     assert profile is not None
     return profile
+
+
+def update_last_agent_run(company_id: int, ts: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE company_profiles SET last_agent_run = ? WHERE id = ?",
+            (ts, company_id),
+        )
 
 
 def build_alert_where(filters: dict[str, Any]) -> tuple[str, list[Any]]:
@@ -305,6 +436,12 @@ def get_assessments(filters: dict[str, Any] | None = None) -> list[dict[str, Any
         value = filters["requires_human_review"]
         clauses.append("aa.requires_human_review = ?")
         params.append(1 if value in ("true", True) else 0)
+    if filters.get("date_from"):
+        clauses.append("a.presentation_date >= ?")
+        params.append(filters["date_from"])
+    if filters.get("date_to"):
+        clauses.append("a.presentation_date <= ?")
+        params.append(filters["date_to"])
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     with get_connection() as conn:
@@ -370,3 +507,103 @@ def get_dashboard_summary(company_id: int | None = None) -> dict[str, int]:
         "priority_low": row["low"] or 0,
         "requires_human_review": row["human_review"] or 0,
     }
+
+
+def get_assessments_by_alert_ids(company_id: int, alert_ids: list[str]) -> list[dict[str, Any]]:
+    """Assessments de una empresa restringidos a una lista de alert_ids (para el informe delta)."""
+    if not alert_ids:
+        return []
+    placeholders = ",".join("?" for _ in alert_ids)
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT aa.*, a.title, a.category, a.country, a.institution,
+                   a.presentation_date, a.source_url
+            FROM alert_assessments aa
+            JOIN regulatory_alerts a ON a.id = aa.alert_id
+            WHERE aa.company_id = ? AND aa.alert_id IN ({placeholders})
+            ORDER BY COALESCE(a.presentation_date, '') DESC, aa.created_at DESC
+            """,
+            [company_id, *alert_ids],
+        ).fetchall()
+
+    assessments = []
+    for row in rows:
+        item = dict(row)
+        item["is_relevant"] = bool(item["is_relevant"])
+        item["requires_human_review"] = bool(item["requires_human_review"])
+        item["impacted_areas"] = decode_json_list(item.get("impacted_areas"))
+        assessments.append(item)
+    return assessments
+
+
+def summarize_assessments(assessments: list[dict[str, Any]]) -> dict[str, int]:
+    """Conteos sobre una lista de assessments, con las mismas claves que get_dashboard_summary."""
+    return {
+        "total_alerts": len(assessments),
+        "evaluated_alerts": len(assessments),
+        "relevant_alerts": sum(1 for a in assessments if a.get("is_relevant")),
+        "priority_high": sum(1 for a in assessments if a.get("priority") == "alta"),
+        "priority_medium": sum(1 for a in assessments if a.get("priority") == "media"),
+        "priority_low": sum(1 for a in assessments if a.get("priority") == "baja"),
+        "requires_human_review": sum(1 for a in assessments if a.get("requires_human_review")),
+    }
+
+
+def save_agent_run(run: dict[str, Any]) -> int:
+    """Guarda una corrida del agente y devuelve su id."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO agent_runs
+                (company_id, started_at, date_from, fetched, inserted, evaluated,
+                 alert_ids, email_sent, report_markdown)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run["company_id"],
+                run.get("started_at") or now_iso(),
+                run.get("date_from"),
+                int(run.get("fetched") or 0),
+                int(run.get("inserted") or 0),
+                int(run.get("evaluated") or 0),
+                list_to_json(run.get("alert_ids") or []),
+                1 if run.get("email_sent") else 0,
+                run.get("report_markdown") or "",
+            ),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+
+def get_agent_runs(company_id: int) -> list[dict[str, Any]]:
+    """Metadata de las corridas (sin el markdown, para listar el historial)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, company_id, started_at, date_from, fetched, inserted,
+                   evaluated, email_sent
+            FROM agent_runs
+            WHERE company_id = ?
+            ORDER BY started_at DESC, id DESC
+            """,
+            (company_id,),
+        ).fetchall()
+    runs = []
+    for row in rows:
+        item = dict(row)
+        item["email_sent"] = bool(item["email_sent"])
+        runs.append(item)
+    return runs
+
+
+def get_agent_run(run_id: int) -> dict[str, Any] | None:
+    """Una corrida completa, incluyendo el markdown del informe guardado."""
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM agent_runs WHERE id = ?", (run_id,)).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    item["email_sent"] = bool(item["email_sent"])
+    item["alert_ids"] = decode_json_list(item.get("alert_ids"))
+    return item
