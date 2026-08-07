@@ -157,13 +157,17 @@ def fetch_alerts_for_company(
         pre_score = mock_evaluate_alert(alert, profile)
 
         if pre_score["impact_score"] < 2:
-            # Save to local DB but mark as no_relevante to skip AI evaluation
-            insert_alert(alert)
+            # Save to local DB but mark as no_relevante to skip AI evaluation.
+            # Usamos el id canónico que devuelve insert_alert: si la alerta ya
+            # existía deduplicada por source_url con otro id, el assessment debe ir
+            # contra ese id existente para no violar la foreign key.
+            canonical_id, _ = insert_alert(alert)
             pre_filtered_assessment = {**pre_score, "priority": "no_relevante", "is_relevant": False}
-            save_assessment(profile["id"], alert["id"], pre_filtered_assessment)
+            save_assessment(profile["id"], canonical_id, pre_filtered_assessment)
             pre_filtered += 1
         else:
-            if insert_alert(alert):
+            _, was_inserted = insert_alert(alert)
+            if was_inserted:
                 inserted += 1
 
     return {

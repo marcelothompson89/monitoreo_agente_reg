@@ -50,17 +50,44 @@ def _alert_block(item: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _country_section(country: str, alerts: list[dict[str, Any]]) -> str:
-    # Sort within country by priority order then impact score
-    sorted_alerts = sorted(
-        alerts,
-        key=lambda a: (
+def group_by_country(assessments: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Agrupa las alertas relevantes por país y las ordena.
+
+    Helper compartido por el informe markdown y el HTML branded para no duplicar
+    las reglas de orden. Devuelve una lista de (país, alertas) donde:
+      - los países vienen ordenados: primero los que tienen prioridad alta, luego media, luego resto;
+      - dentro de cada país las alertas van por prioridad y luego por impact_score desc.
+    """
+    by_country: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for item in assessments:
+        if not item.get("is_relevant"):
+            continue
+        country = (item.get("country") or "Sin país").strip().title()
+        by_country[country].append(item)
+
+    def country_sort_key(c: str) -> tuple:
+        items = by_country[c]
+        has_alta = any(a.get("priority") == "alta" for a in items)
+        has_media = any(a.get("priority") == "media" for a in items)
+        return (0 if has_alta else 1 if has_media else 2, c)
+
+    def alert_sort_key(a: dict[str, Any]) -> tuple:
+        return (
             PRIORITY_ORDER.index(a.get("priority") or "no_relevante"),
             -(a.get("impact_score") or 0),
-        ),
-    )
+        )
+
+    result = []
+    for country in sorted(by_country.keys(), key=country_sort_key):
+        result.append((country, sorted(by_country[country], key=alert_sort_key)))
+    return result
+
+
+def _country_section(country: str, alerts: list[dict[str, Any]], narrative: str = "") -> str:
     lines = [f"## 🌎 {country}", ""]
-    for item in sorted_alerts:
+    if narrative:
+        lines += [f"*{narrative}*", ""]
+    for item in alerts:
         lines.append(_alert_block(item))
     return "\n".join(lines)
 
@@ -69,28 +96,19 @@ def generate_weekly_report(
     company_profile: dict[str, Any] | None,
     summary: dict[str, int],
     assessments: list[dict[str, Any]],
+    narrative: dict[str, Any] | None = None,
 ) -> str:
     company_name = (company_profile or {}).get("company_name") or "Empresa"
     now = datetime.now().strftime("%d de %B de %Y, %H:%M")
+    narrative = narrative or {}
+    country_narratives = narrative.get("country_narratives") or {}
 
     # Only include relevant alerts in country sections
-    relevant = [a for a in assessments if a.get("is_relevant")]
     non_relevant = [a for a in assessments if not a.get("is_relevant")]
 
-    # Group relevant alerts by country
-    by_country: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for item in relevant:
-        country = (item.get("country") or "Sin país").strip().title()
-        by_country[country].append(item)
-
-    # Sort countries: those with high-priority alerts first
-    def country_sort_key(c: str) -> tuple:
-        items = by_country[c]
-        has_alta = any(a.get("priority") == "alta" for a in items)
-        has_media = any(a.get("priority") == "media" for a in items)
-        return (0 if has_alta else 1 if has_media else 2, c)
-
-    sorted_countries = sorted(by_country.keys(), key=country_sort_key)
+    # Group relevant alerts by country (helper compartido con el HTML branded)
+    country_groups = group_by_country(assessments)
+    sorted_countries = [c for c, _ in country_groups]
 
     # Build top actions list
     top_actions = [
@@ -120,9 +138,18 @@ def generate_weekly_report(
         f"| ⚠️ Requieren revisión humana | {summary.get('requires_human_review', 0)} |",
         f"| Países con alertas relevantes | {len(sorted_countries)} |",
         "",
-        "---",
-        "",
     ]
+
+    # Síntesis redactada por el LLM (si está disponible)
+    if narrative.get("executive_summary"):
+        lines += ["", narrative["executive_summary"], ""]
+    if narrative.get("cross_cutting"):
+        lines += ["**Puntos transversales:**", ""]
+        for point in narrative["cross_cutting"]:
+            lines.append(f"- {point}")
+        lines.append("")
+
+    lines += ["---", ""]
 
     # Top actions summary
     if top_actions:
@@ -140,10 +167,10 @@ def generate_weekly_report(
         lines += ["", "---", ""]
 
     # Country sections
-    if sorted_countries:
+    if country_groups:
         lines += ["## Novedades por país", ""]
-        for country in sorted_countries:
-            lines.append(_country_section(country, by_country[country]))
+        for country, alerts in country_groups:
+            lines.append(_country_section(country, alerts, country_narratives.get(country, "")))
     else:
         lines += ["*No se encontraron alertas relevantes para el perfil configurado.*", ""]
 

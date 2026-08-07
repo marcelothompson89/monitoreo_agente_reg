@@ -387,6 +387,7 @@ a { color: var(--accent-dark); font-weight: 700; }
 .report-preview p { margin: 8px 0; color: var(--text); }
 .report-preview strong { color: var(--text); }
 .report-preview.is-empty { display: flex; align-items: center; justify-content: center; background: var(--surface); }
+.report-frame { width: 100%; min-height: 560px; border: 0; background: #fff; border-radius: 6px; display: block; }
 
 /* ── Resumen: métricas + gráfico ── */
 .summary-row {
@@ -490,14 +491,55 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .confidence.media { background: #f8ead3; color: var(--warn); }
 .confidence.baja { background: #f1e3e3; color: var(--danger); }
 
-/* ── Filas expandibles ── */
-tr.expandable { cursor: pointer; }
-tr.expandable:hover td { background: #f4f8f7; }
-tbody tr:not(.expandable):not(.empty-row):hover td { background: #f7f9fa; }
-.expand-caret { display: inline-block; margin-right: 6px; color: var(--muted); font-size: 11px; }
-.detail-row td { background: #f4f8f7; }
-.detail-box { padding: 4px 8px; font-size: 13px; }
-.detail-box p { margin: 6px 0; color: var(--text); }
+/* ── Filas clickeables (abren el drawer de detalle) ── */
+tr.assessment-row { cursor: pointer; }
+tr.assessment-row:hover td { background: #f4f8f7; }
+tr.assessment-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+tbody tr:not(.assessment-row):not(.empty-row):hover td { background: #f7f9fa; }
+.detail-box { padding: 4px 0; font-size: 13.5px; }
+.detail-box p { margin: 10px 0; color: var(--text); line-height: 1.5; }
+.detail-box .detail-empty { color: var(--muted); }
+
+/* ── Drawer de detalle de alerta ── */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 950;
+}
+.detail-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 92vw;
+  background: var(--surface);
+  box-shadow: -8px 0 24px rgba(0,0,0,0.18);
+  z-index: 960;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.24s ease;
+}
+.detail-drawer.open { transform: translateX(0); }
+/* El display:flex de arriba pisa el atributo [hidden]; lo restauramos para que
+   el drawer no quede en el layout (fuera de pantalla) provocando scroll horizontal. */
+.detail-drawer[hidden] { display: none; }
+.drawer-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.drawer-head-text { flex: 1; min-width: 0; }
+.drawer-meta { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.drawer-head h2 { font-size: 16px; margin: 0; color: var(--text); line-height: 1.35; }
+.drawer-body { padding: 16px 20px 28px; overflow-y: auto; }
 
 /* ── Empty states ── */
 .empty-state { text-align: center; padding: 40px 16px; color: var(--muted); }
@@ -864,6 +906,34 @@ tbody tr:not(.expandable):not(.empty-row):hover td { background: #f7f9fa; }
 .run-history { display: flex; flex-direction: column; gap: 8px; max-height: 640px; overflow-y: auto; }
 .run-empty { font-size: 13px; color: var(--muted); }
 
+.run-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.run-row .run-item { flex: 1; min-width: 0; }
+.run-delete {
+  flex: 0 0 auto;
+  width: 34px;
+  min-height: unset;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.run-row:hover .run-delete { opacity: 1; }
+.run-delete:hover {
+  background: var(--surface-strong);
+  border-color: var(--line);
+  color: var(--danger);
+}
+.run-delete:focus-visible { opacity: 1; }
+
 .run-item {
   display: flex;
   flex-direction: column;
@@ -882,7 +952,48 @@ tbody tr:not(.expandable):not(.empty-row):hover td { background: #f7f9fa; }
 .run-item.active { border-color: var(--accent); background: var(--surface-strong); }
 .run-date { font-weight: 700; font-size: 13px; }
 .run-meta { font-weight: 400; font-size: 12px; color: var(--muted); }
+.run-window { font-weight: 400; font-size: 11px; color: var(--muted); }
 .run-report { min-height: 280px; }
+
+/* ── Vista Informes: barra de acción ── */
+.informes-actionbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+}
+.informes-actionbar-info { display: flex; flex-direction: column; gap: 2px; }
+.actionbar-label { color: var(--muted); font-size: 13px; font-weight: 700; }
+.actionbar-value { font-weight: 800; font-size: 16px; }
+.informes-actionbar-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ── Vista Agente: tarjeta de estado ── */
+.run-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.run-summary-item {
+  background: var(--surface-strong);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.run-summary-value { font-size: 18px; font-weight: 800; }
+.run-summary-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+
+/* ── Configuración: sub-bloque de branding ── */
+.form-subhead { margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.form-subhead h3 { margin: 0 0 2px; font-size: 15px; }
+.form-subhead p { margin: 0; color: var(--muted); font-size: 13px; font-weight: 400; }
 
 /* ── Responsive ── */
 @media (max-width: 1100px) {

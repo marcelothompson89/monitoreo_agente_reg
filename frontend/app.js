@@ -71,8 +71,16 @@ function setConnectionError(visible) {
   banner.hidden = !visible;
 }
 
+// Adjunta X-API-Key si hay una guardada (localStorage "app_api_key"). Necesario
+// cuando el backend corre con APP_API_KEY seteada; en dev local no hace nada.
+function withApiKey(options = {}) {
+  const key = localStorage.getItem("app_api_key");
+  if (!key) return options;
+  return { ...options, headers: { ...(options.headers || {}), "X-API-Key": key } };
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, options);
+  const response = await fetch(path, withApiKey(options));
   if (!response.ok) {
     let message = "Ocurrió un error";
     try {
@@ -139,9 +147,6 @@ async function loadCompanies() {
 
 async function loadFilters() {
   state.filters = await api("/filters");
-  fillSelect($("#filterCountry"), state.filters.country, "Todos");
-  fillSelect($("#filterInstitution"), state.filters.institution, "Todas");
-  fillSelect($("#filterCategory"), state.filters.category, "Todas");
   fillSelect($("#dashCountry"), state.filters.country, "Todos");
   fillSelect($("#dashInstitution"), state.filters.institution, "Todas");
 }
@@ -202,16 +207,6 @@ async function loadProfile() {
 
   // Store the profile id for updates
   form.dataset.profileId = profile.id;
-}
-
-function activeAlertFilters() {
-  return {
-    country: $("#filterCountry").value,
-    institution: $("#filterInstitution").value,
-    category: $("#filterCategory").value,
-    date_from: $("#filterDateFrom").value,
-    date_to: $("#filterDateTo").value,
-  };
 }
 
 function toQuery(params) {
@@ -316,6 +311,25 @@ function emptyRow(message, cta) {
     </td></tr>`;
 }
 
+// Items de la última carga, indexados para recuperarlos al abrir el drawer.
+const assessmentsByIndex = [];
+
+// Arma el HTML del detalle de una evaluación (reutilizado por el drawer lateral).
+function renderAssessmentDetail(item) {
+  const areas = (item.impacted_areas || []).map(escapeHtml).join(", ");
+  const parts = [];
+  if (item.institution) parts.push(`<p><strong>Institución:</strong> ${escapeHtml(item.institution)}</p>`);
+  if (item.category) parts.push(`<p><strong>Categoría:</strong> ${escapeHtml(item.category)}</p>`);
+  if (item.impact_summary) parts.push(`<p><strong>Resumen de impacto:</strong> ${escapeHtml(item.impact_summary)}</p>`);
+  if (item.recommended_action) parts.push(`<p><strong>Acción recomendada:</strong> ${escapeHtml(item.recommended_action)}</p>`);
+  if (item.risk_if_ignored) parts.push(`<p><strong>Riesgo si se ignora:</strong> ${escapeHtml(item.risk_if_ignored)}</p>`);
+  if (areas) parts.push(`<p><strong>Áreas impactadas:</strong> ${areas}</p>`);
+  if (item.agent_reasoning) parts.push(`<p><strong>Razonamiento del agente:</strong> ${escapeHtml(item.agent_reasoning)}</p>`);
+  if (item.source_url) parts.push(`<p><a href="${escapeHtml(item.source_url)}" target="_blank" rel="noreferrer">Abrir fuente ↗</a></p>`);
+  if (!parts.length) parts.push(`<p class="detail-empty">Sin detalle adicional para esta alerta.</p>`);
+  return `<div class="detail-box">${parts.join("")}</div>`;
+}
+
 async function loadAssessments() {
   const params = withCompany({
     priority: $("#dashPriority").value,
@@ -326,87 +340,165 @@ async function loadAssessments() {
   const data = await api(`/assessments?${toQuery(params)}`);
   const rows = $("#assessmentRows");
 
+  assessmentsByIndex.length = 0;
+
   if (!data.items.length) {
     rows.innerHTML = emptyRow(
       "Todavía no hay evaluaciones para mostrar.",
-      'Cargá un CSV o ejecutá el agente desde <strong>Configuración</strong>.'
+      'Ejecutá el agente desde <strong>Informes</strong> para generar evaluaciones.'
     );
     return;
   }
 
   rows.innerHTML = data.items
-    .map((item) => {
+    .map((item, index) => {
+      assessmentsByIndex[index] = item;
       const review = item.requires_human_review
         ? `<span class="review-flag" title="Requiere revisión humana">⚠ Revisión</span>`
         : "";
-      const areas = (item.impacted_areas || []).map(escapeHtml).join(", ");
-      // El detalle (siempre presente) recoge todo lo que ya no va en columnas.
-      const detailParts = [];
-      if (item.institution) detailParts.push(`<p><strong>Institución:</strong> ${escapeHtml(item.institution)}</p>`);
-      if (item.category) detailParts.push(`<p><strong>Categoría:</strong> ${escapeHtml(item.category)}</p>`);
-      if (item.impact_summary) detailParts.push(`<p><strong>Resumen de impacto:</strong> ${escapeHtml(item.impact_summary)}</p>`);
-      if (item.recommended_action) detailParts.push(`<p><strong>Acción recomendada:</strong> ${escapeHtml(item.recommended_action)}</p>`);
-      if (item.risk_if_ignored) detailParts.push(`<p><strong>Riesgo si se ignora:</strong> ${escapeHtml(item.risk_if_ignored)}</p>`);
-      if (areas) detailParts.push(`<p><strong>Áreas impactadas:</strong> ${areas}</p>`);
-      if (item.agent_reasoning) detailParts.push(`<p><strong>Razonamiento del agente:</strong> ${escapeHtml(item.agent_reasoning)}</p>`);
-      if (item.source_url) detailParts.push(`<p><a href="${escapeHtml(item.source_url)}" target="_blank" rel="noreferrer">Abrir fuente ↗</a></p>`);
-      const hasDetail = detailParts.length > 0;
-      const main = `
-      <tr class="${hasDetail ? "expandable" : ""}" ${hasDetail ? 'data-expand="1"' : ""}>
-        <td>${hasDetail ? '<span class="expand-caret">▸</span>' : ""}${escapeHtml(item.presentation_date || "")}</td>
+      return `
+      <tr class="assessment-row" data-index="${index}" tabindex="0" role="button" title="Ver detalle">
+        <td>${escapeHtml(item.presentation_date || "")}</td>
         <td>${escapeHtml(item.title || "")}</td>
         <td>${escapeHtml(item.country || "")}</td>
         <td>${priorityBadge(item.priority)}${review}</td>
         <td class="num">${item.impact_score}</td>
         <td>${confidenceBadge(item.confidence)}</td>
       </tr>`;
-      const detail = hasDetail
-        ? `<tr class="detail-row" hidden><td colspan="6"><div class="detail-box">${detailParts.join("")}</div></td></tr>`
-        : "";
-      return main + detail;
     })
     .join("");
 }
 
+// ── Drawer de detalle de alerta ──
+function openAlertDrawer(item) {
+  const drawer = $("#alertDetailDrawer");
+  const overlay = $("#alertDetailOverlay");
+  if (!drawer || !overlay) return;
+  $("#alertDetailTitle").textContent = item.title || "Detalle de la alerta";
+  const meta = [item.country, item.presentation_date].filter(Boolean).join(" · ");
+  $("#alertDetailMeta").textContent = meta;
+  $("#alertDetailBody").innerHTML = renderAssessmentDetail(item);
+  overlay.hidden = false;
+  drawer.hidden = false;
+  // Forzar reflow para que la transición de entrada se aplique.
+  requestAnimationFrame(() => drawer.classList.add("open"));
+}
+
+function closeAlertDrawer() {
+  const drawer = $("#alertDetailDrawer");
+  const overlay = $("#alertDetailOverlay");
+  if (!drawer || !overlay) return;
+  drawer.classList.remove("open");
+  overlay.hidden = true;
+  // Esperar a que termine la transición antes de ocultar del layout.
+  setTimeout(() => { if (!drawer.classList.contains("open")) drawer.hidden = true; }, 250);
+}
+
 // ── Historial de ejecuciones del agente ──
+function formatRunDate(value) {
+  return value
+    ? new Date(value + "Z").toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })
+    : "—";
+}
+
+// Tarjeta de estado (vista Agente) + última ejecución (barra de acción de Informes),
+// a partir de la corrida más reciente ya traída por /agent-runs.
+function renderAgentRunSummary(run) {
+  const lastRunEl = $("#informesLastRun");
+  const summaryEl = $("#agentRunSummary");
+  if (!run) {
+    if (lastRunEl) lastRunEl.textContent = "Nunca";
+    if (summaryEl) summaryEl.innerHTML = `<p class="run-empty">Todavía no hay ejecuciones registradas.</p>`;
+    return;
+  }
+  const fecha = formatRunDate(run.started_at);
+  if (lastRunEl) lastRunEl.textContent = fecha;
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <div class="run-summary-grid">
+        <div class="run-summary-item"><span class="run-summary-value">${escapeHtml(fecha)}</span><span class="run-summary-label">Última corrida</span></div>
+        <div class="run-summary-item"><span class="run-summary-value">${run.fetched || 0}</span><span class="run-summary-label">Alertas traídas</span></div>
+        <div class="run-summary-item"><span class="run-summary-value">${run.evaluated || 0}</span><span class="run-summary-label">Evaluadas con IA</span></div>
+        <div class="run-summary-item"><span class="run-summary-value">${run.email_sent ? "📧 Enviado" : "No"}</span><span class="run-summary-label">Email</span></div>
+      </div>`;
+  }
+}
+
 async function loadRunHistory() {
   const list = $("#runHistory");
   if (!list) return;
   const preview = $("#runReportPreview");
   const data = await api(`/agent-runs?${companyQuery()}`);
+  renderAgentRunSummary(data.items && data.items[0]);
   if (!data.items || !data.items.length) {
-    list.innerHTML = `<p class="run-empty">Todavía no corriste el agente. Ejecutalo desde <strong>Configuración</strong> para generar tu primer informe.</p>`;
+    list.innerHTML = `
+      <p class="run-empty">Todavía no corriste el agente. Configuralo y ejecutalo para generar tu primer informe.</p>
+      <button id="emptyRunAgentBtn" class="secondary">🤖 Ir al agente</button>`;
+    list.querySelector("#emptyRunAgentBtn").addEventListener("click", () => switchView("agente"));
     if (preview) {
       preview.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂️</div><p class="empty-title">Sin ejecuciones aún.</p></div>`;
       preview.classList.add("is-empty");
     }
     return;
   }
-  if (preview && preview.classList.contains("is-empty")) {
-    preview.innerHTML = `<div class="empty-state"><div class="empty-icon">👈</div><p class="empty-title">Seleccioná una ejecución para ver su informe.</p></div>`;
-  }
   list.innerHTML = data.items
     .map((run) => {
-      const fecha = run.started_at
-        ? new Date(run.started_at + "Z").toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })
-        : "—";
+      const fecha = formatRunDate(run.started_at);
       const email = run.email_sent ? "📧" : "";
+      const window = run.date_from ? `<span class="run-window">ventana desde ${escapeHtml(String(run.date_from).slice(0, 10))}</span>` : "";
       return `
-        <button class="run-item" data-run-id="${run.id}">
-          <span class="run-date">${escapeHtml(fecha)} ${email}</span>
-          <span class="run-meta">${run.fetched || 0} traídas · ${run.evaluated || 0} evaluadas</span>
-        </button>`;
+        <div class="run-row">
+          <button class="run-item" data-run-id="${run.id}">
+            <span class="run-date">${escapeHtml(fecha)} ${email}</span>
+            <span class="run-meta">${run.fetched || 0} traídas · ${run.evaluated || 0} evaluadas</span>
+            ${window}
+          </button>
+          <button class="run-delete" data-run-id="${run.id}" title="Eliminar del historial"
+                  aria-label="Eliminar del historial el informe del ${escapeHtml(fecha)}">✕</button>
+        </div>`;
     })
     .join("");
+  // Re-marcar la corrida ya mostrada, o auto-abrir la más reciente para que el
+  // usuario vea su último informe sin clicks.
+  const selectedId = currentReport ? String(currentReport.runId) : null;
+  const target =
+    (selectedId && list.querySelector(`.run-item[data-run-id="${selectedId}"]`)) ||
+    list.querySelector(".run-item");
+  if (!target) return;
+  if (selectedId && target.dataset.runId === selectedId) {
+    target.classList.add("active");
+  } else {
+    await showRunReport(target.dataset.runId, target);
+  }
 }
+
+let currentReport = null; // { runId, html } del informe mostrado, para descargarlo
 
 async function showRunReport(runId, button) {
   const preview = $("#runReportPreview");
+  const downloadBtn = $("#downloadReportHtml");
   document.querySelectorAll(".run-item").forEach((b) => b.classList.toggle("active", b === button));
+  currentReport = null;
+  if (downloadBtn) downloadBtn.hidden = true;
   try {
-    const md = await api(`/agent-runs/${runId}/report`);
-    if (md && md.trim()) {
-      preview.innerHTML = markdownToHtml(md);
+    // Mismo HTML branded que se envió por email (aislado en un iframe para que
+    // sus estilos no se mezclen con los de la app).
+    const html = await api(`/agent-runs/${runId}/report.html`);
+    if (html && html.trim()) {
+      currentReport = { runId, html };
+      if (downloadBtn) downloadBtn.hidden = false;
+      const iframe = document.createElement("iframe");
+      iframe.className = "report-frame";
+      iframe.setAttribute("sandbox", "allow-same-origin allow-popups");
+      iframe.srcdoc = html;
+      // Ajusta la altura del iframe al contenido para que el scroll lo maneje el panel.
+      iframe.addEventListener("load", () => {
+        try {
+          const h = iframe.contentDocument?.body?.scrollHeight;
+          if (h) iframe.style.height = `${h + 24}px`;
+        } catch (_) { /* cross-origin: se deja la altura por CSS */ }
+      });
+      preview.replaceChildren(iframe);
       preview.classList.remove("is-empty");
     } else {
       preview.innerHTML = `<div class="empty-state"><div class="empty-icon">📄</div><p class="empty-title">Esta corrida no generó alertas nuevas.</p></div>`;
@@ -417,11 +509,49 @@ async function showRunReport(runId, button) {
   }
 }
 
+// Baja lógica: el informe deja de listarse pero la corrida queda en la base.
+async function deleteRun(runId) {
+  if (!confirm("¿Eliminar este informe del historial? Dejará de aparecer en la lista.")) return;
+  try {
+    await api(`/agent-runs/${runId}`, { method: "DELETE" });
+    if (currentReport && String(currentReport.runId) === String(runId)) {
+      currentReport = null;
+      const downloadBtn = $("#downloadReportHtml");
+      if (downloadBtn) downloadBtn.hidden = true;
+    }
+    toast("Informe eliminado del historial.");
+    await loadRunHistory();
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
 const runHistoryEl = $("#runHistory");
 if (runHistoryEl) {
   runHistoryEl.addEventListener("click", (event) => {
+    const del = event.target.closest(".run-delete");
+    if (del) {
+      deleteRun(del.dataset.runId);
+      return;
+    }
     const btn = event.target.closest(".run-item");
     if (btn) showRunReport(btn.dataset.runId, btn);
+  });
+}
+
+const downloadReportBtn = $("#downloadReportHtml");
+if (downloadReportBtn) {
+  downloadReportBtn.addEventListener("click", () => {
+    if (!currentReport) return;
+    const blob = new Blob([currentReport.html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `informe-${currentReport.runId}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   });
 }
 
@@ -503,14 +633,14 @@ $("#newCompanyBtn").addEventListener("click", () => {
 
 // ── Navegación: menú lateral + vistas ──
 const VIEW_TITLES = {
-  dashboard: "Dashboard",
-  evaluaciones: "Evaluaciones",
   informes: "Informes",
+  agente: "Agente",
+  dashboard: "Dashboard",
   config: "Configuración",
 };
 
 function switchView(view) {
-  if (!VIEW_TITLES[view]) view = "dashboard";
+  if (!VIEW_TITLES[view]) view = "informes";
   document.querySelectorAll("section.view").forEach((s) => {
     s.classList.toggle("active", s.dataset.view === view);
   });
@@ -555,7 +685,7 @@ if (sidebarOverlay) sidebarOverlay.addEventListener("click", closeSidebarDrawer)
 if (localStorage.getItem("sidebar_collapsed") === "true") {
   sidebar.classList.add("collapsed");
 }
-switchView(localStorage.getItem("active_view") || "dashboard");
+switchView(localStorage.getItem("active_view") || "informes");
 
 // Custom industry chip (profile form)
 $("#addIndustryBtn").addEventListener("click", () => {
@@ -670,10 +800,10 @@ $("#agentWindowMode")?.addEventListener("change", syncAgentWindowMode);
 
 // Persiste la config del agente (emails, días, fuentes) que está EN PANTALLA.
 // Devuelve true si guardó, false si no hay perfil.
-async function persistAgentConfig() {
+async function persistAgentConfig(statusEl = $("#agentStatus")) {
   const form = $("#profileForm");
   if (!form.dataset.profileId) {
-    setStatus($("#agentStatus"), "Guardá primero un perfil de empresa.", false);
+    setStatus(statusEl, "Guardá primero un perfil de empresa.", false);
     return false;
   }
   const qs = companyQuery();
@@ -684,11 +814,11 @@ async function persistAgentConfig() {
     const from = $("#agentDateFrom").value;
     const to = $("#agentDateTo").value;
     if (!from) {
-      setStatus($("#agentStatus"), 'Elegí una fecha "Desde" para el rango, o cambiá a "Últimos N días".', false);
+      setStatus(statusEl, 'Elegí una fecha "Desde" para el rango, o cambiá a "Últimos N días".', false);
       return false;
     }
     if (to && to < from) {
-      setStatus($("#agentStatus"), 'La fecha "Hasta" no puede ser anterior a "Desde".', false);
+      setStatus(statusEl, 'La fecha "Hasta" no puede ser anterior a "Desde".', false);
       return false;
     }
   }
@@ -757,41 +887,52 @@ $("#previewAgentBtn").addEventListener("click", (event) => {
   });
 });
 
-$("#runAgentBtn").addEventListener("click", (event) => {
-  const btn = event.currentTarget;
+// Corre el agente con la config guardada. Compartido por el botón de la vista
+// Agente y el quick-run de Informes; statusEl define dónde se muestran los mensajes.
+function runAgentNow(button, statusEl) {
   const qs = companyQuery();
-  return withBusy(btn, "Ejecutando…", async () => {
+  return withBusy(button, "Ejecutando…", async () => {
     try {
       // Guardar primero la selección actual de fuentes/emails/días, así lo que se
       // ejecuta coincide con lo que está tildado en pantalla.
-      const saved = await persistAgentConfig();
+      const saved = await persistAgentConfig(statusEl);
       if (!saved) return;
-      setStatus($("#agentStatus"), "Ejecutando agente… esto puede tomar unos minutos.");
+      setStatus(statusEl, "Ejecutando agente… esto puede tomar unos minutos.");
       const result = await api(`/run-agent${qs ? "?" + qs : ""}`, { method: "POST" });
       const r = result.results && result.results[0];
+      let ok = true;
       if (r && r.error) {
-        setStatus($("#agentStatus"), `Error: ${r.error}`, false);
+        setStatus(statusEl, `Error: ${r.error}`, false);
+        ok = false;
       } else if (r) {
         // Mensajes por-paso: Supabase / email
         if (r.supabase_error) {
-          setStatus($("#agentStatus"), `Supabase falló: ${r.supabase_error}`, false);
+          setStatus(statusEl, `Supabase falló: ${r.supabase_error}`, false);
+          ok = false;
         } else {
           const emailMsg = r.email_sent
             ? "📧 email enviado"
             : (r.email_error ? `email no enviado (${r.email_error})` : "sin email (configurá RESEND_API_KEY)");
           setStatus(
-            $("#agentStatus"),
+            statusEl,
             `Listo: ${r.fetched || 0} alertas traídas, ${r.evaluated || 0} evaluadas — ${emailMsg}`
           );
         }
       }
+      // Soltar el informe seleccionado para que loadRunHistory abra el más nuevo.
+      if (ok) currentReport = null;
       await refreshAll();
       await loadAgentStatus();
+      if (ok) switchView("informes");
     } catch (e) {
-      setStatus($("#agentStatus"), e.message, false);
+      setStatus(statusEl, e.message, false);
     }
   });
-});
+}
+
+$("#runAgentBtn").addEventListener("click", (event) => runAgentNow(event.currentTarget, $("#agentStatus")));
+$("#quickRunAgentBtn")?.addEventListener("click", (event) => runAgentNow(event.currentTarget, $("#informesStatus")));
+$("#configAgentBtn")?.addEventListener("click", () => switchView("agente"));
 
 
 function markdownToHtml(md) {
@@ -810,16 +951,33 @@ function markdownToHtml(md) {
   $(`#${id}`).addEventListener("change", loadAssessments);
 });
 
-// Filas expandibles del dashboard (detalle de la evaluación IA)
+// Clic/Enter en una fila → abrir el drawer con el detalle de la evaluación IA.
+function openDrawerFromRow(row) {
+  const item = assessmentsByIndex[Number(row.dataset.index)];
+  if (item) openAlertDrawer(item);
+}
+
 $("#assessmentRows").addEventListener("click", (event) => {
-  if (event.target.closest("a")) return; // no interferir con el link "Abrir"
-  const row = event.target.closest("tr.expandable");
-  if (!row) return;
-  const detail = row.nextElementSibling;
-  if (detail && detail.classList.contains("detail-row")) {
-    detail.hidden = !detail.hidden;
-    const caret = row.querySelector(".expand-caret");
-    if (caret) caret.textContent = detail.hidden ? "▸" : "▾";
+  if (event.target.closest("a")) return; // no interferir con links dentro de la fila
+  const row = event.target.closest("tr.assessment-row");
+  if (row) openDrawerFromRow(row);
+});
+
+$("#assessmentRows").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const row = event.target.closest("tr.assessment-row");
+  if (row) {
+    event.preventDefault();
+    openDrawerFromRow(row);
+  }
+});
+
+// Cierre del drawer: botón ✕, clic en el overlay y tecla Esc.
+$("#alertDetailClose").addEventListener("click", closeAlertDrawer);
+$("#alertDetailOverlay").addEventListener("click", closeAlertDrawer);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && $("#alertDetailDrawer").classList.contains("open")) {
+    closeAlertDrawer();
   }
 });
 

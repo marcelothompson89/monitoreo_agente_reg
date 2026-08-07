@@ -1,6 +1,6 @@
 # Agente de Monitoreo Regulatorio Personalizado
 
-MVP local con FastAPI, SQLite, HTML, CSS y JavaScript vanilla para cargar alertas regulatorias desde CSV, configurar un perfil de empresa, evaluar impacto con OpenAI o una lógica mock y generar un informe semanal en Markdown.
+MVP local con FastAPI, SQLite, HTML, CSS y JavaScript vanilla que trae alertas regulatorias desde Supabase, configura un perfil de empresa, evalúa impacto con OpenAI o una lógica mock y genera un informe semanal branded (HTML + email).
 
 ## Requisitos
 
@@ -42,40 +42,15 @@ Abrí la app en:
 http://127.0.0.1:8000
 ```
 
-## CSV
-
-El archivo puede incluir estas columnas:
-
-- `id`
-- `title`
-- `description`
-- `source_type`
-- `category`
-- `country`
-- `institution`
-- `source_url`
-- `presentation_date`
-- `full_text`
-
-Columnas mínimas:
-
-- `title`
-- `id` o `source_url`
-
-Si `full_text` no existe, el cargador usa `description`. Esto permite cargar el export `alertas_alerta_rows (2).csv` que está en este workspace.
-
 ## Flujo recomendado
 
-1. Subir `sample_alerts.csv` o `alertas_alerta_rows (2).csv`.
-2. Configurar el perfil de empresa.
-3. Elegir filtros de país, institución, categoría y fechas si querés acotar la corrida.
-4. Presionar `Evaluar alertas pendientes`.
-5. Revisar el dashboard.
-6. Descargar el informe semanal `.md`.
+1. Configurar el perfil de empresa (países, categorías, keywords, temas excluidos).
+2. Ejecutar el agente desde la vista **Informes**: trae las alertas desde Supabase, las evalúa con IA y genera el informe semanal.
+3. Revisar el dashboard y el historial de corridas.
+4. Descargar el informe (`.html`) o recibirlo por email.
 
 ## Endpoints
 
-- `POST /upload-csv`
 - `GET /alerts`
 - `GET /filters`
 - `POST /company-profile`

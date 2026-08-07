@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import Any
 
 from .ai_agent import evaluate_alert
@@ -16,6 +17,8 @@ from .db import (
 )
 from .email_sender import send_report_email
 from .report_generator import generate_weekly_report
+from .report_html import render_report_html
+from .report_synth import synthesize_report
 from .supabase_loader import fetch_alerts_for_company
 
 
@@ -49,7 +52,13 @@ def run_weekly_agent(
             manual_from = (profile.get("agent_date_from") or "").strip()
             manual_to = (profile.get("agent_date_to") or "").strip()
             use_range = bool(manual_from)
-            date_window = {"date_from": manual_from, "date_to": manual_to} if use_range else {}
+            if use_range:
+                date_window = {"date_from": manual_from, "date_to": manual_to}
+            else:
+                # Modo relativo: acotar la evaluación a los últimos `days_back` días para
+                # no evaluar (ni pagar) alertas viejas pendientes fuera de la ventana.
+                relative_floor = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+                date_window = {"date_from": relative_floor}
 
             # Step 1: fetch from Supabase
             date_from = None
@@ -90,7 +99,11 @@ def run_weekly_agent(
             else:
                 report_assessments = get_assessments_by_alert_ids(cid, evaluated_ids)
             delta_summary = summarize_assessments(report_assessments)
-            report_md = generate_weekly_report(profile, delta_summary, report_assessments)
+            # Síntesis narrativa con LLM (devuelve {} si la IA no está disponible).
+            narrative = synthesize_report(profile, delta_summary, report_assessments)
+            report_md = generate_weekly_report(profile, delta_summary, report_assessments, narrative)
+            # HTML branded idéntico al que se envía por email; se congela para el visualizador.
+            report_html = render_report_html(profile, delta_summary, report_assessments, narrative)
 
             # Step 4: send email (informe delta)
             recipients = decode_json_list(profile.get("email_recipients"))
@@ -98,7 +111,7 @@ def run_weekly_agent(
             if not recipients:
                 result["email_error"] = "sin destinatarios configurados"
             else:
-                email_sent = send_report_email(recipients, profile["company_name"], report_md, delta_summary)
+                email_sent = send_report_email(recipients, profile, delta_summary, report_assessments, narrative)
                 if not email_sent:
                     result["email_error"] = "falló el envío (revisá RESEND_API_KEY y los logs)"
             result["email_sent"] = email_sent
@@ -112,8 +125,14 @@ def run_weekly_agent(
                 "inserted": result.get("inserted", 0),
                 "evaluated": result["evaluated"],
                 "alert_ids": evaluated_ids,
+                # Lo que el informe cubre != lo evaluado en esta corrida: en modo rango
+                # incluye alertas ya evaluadas antes. El visualizador re-renderiza a
+                # partir de esta lista, así que sin ella el informe sale vacío.
+                "report_alert_ids": [a["alert_id"] for a in report_assessments],
                 "email_sent": email_sent,
                 "report_markdown": report_md,
+                "report_html": report_html,
+                "narrative": narrative,
             })
             result["run_id"] = run_id
             update_last_agent_run(cid, now_iso())

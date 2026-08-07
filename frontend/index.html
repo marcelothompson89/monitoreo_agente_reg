@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agente de Monitoreo Regulatorio</title>
-    <link rel="stylesheet" href="/styles.css?v=7" />
+    <link rel="stylesheet" href="/styles.css?v=10" />
   </head>
   <body>
     <div class="app">
@@ -16,9 +16,9 @@
           <span class="sidebar-title">Monitoreo<br />Regulatorio</span>
         </div>
         <nav class="sidebar-nav">
-          <button class="nav-item active" data-view="dashboard"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></button>
-          <button class="nav-item" data-view="evaluaciones"><span class="nav-icon">📋</span><span class="nav-label">Evaluaciones</span></button>
-          <button class="nav-item" data-view="informes"><span class="nav-icon">📄</span><span class="nav-label">Informes</span></button>
+          <button class="nav-item active" data-view="informes"><span class="nav-icon">📄</span><span class="nav-label">Informes</span></button>
+          <button class="nav-item" data-view="agente"><span class="nav-icon">🤖</span><span class="nav-label">Agente</span></button>
+          <button class="nav-item" data-view="dashboard"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></button>
           <button class="nav-item" data-view="config"><span class="nav-icon">⚙️</span><span class="nav-label">Configuración</span></button>
         </nav>
       </aside>
@@ -30,7 +30,7 @@
           <div class="topbar-left">
             <button id="sidebarToggle" class="icon-btn" aria-label="Mostrar/ocultar menú">☰</button>
             <div>
-              <h1 id="viewTitle">Dashboard</h1>
+              <h1 id="viewTitle">Informes</h1>
               <p>Alertas regulatorias personalizadas para tu empresa.</p>
             </div>
           </div>
@@ -58,7 +58,7 @@
         <main class="layout">
 
           <!-- ════ Vista: Dashboard ════ -->
-          <section class="view active" data-view="dashboard">
+          <section class="view" data-view="dashboard">
             <div class="summary-row">
               <div class="metrics" id="metrics"></div>
               <section class="panel chart-panel">
@@ -66,20 +66,6 @@
                 <div id="priorityChart" class="priority-chart"></div>
               </section>
             </div>
-          </section>
-
-          <!-- ════ Vista: Evaluaciones ════ -->
-          <section class="view" data-view="evaluaciones">
-            <section class="panel">
-              <h2>Filtros de alertas</h2>
-              <div class="filters">
-                <label>País<select id="filterCountry"><option value="">Todos</option></select></label>
-                <label>Institución<select id="filterInstitution"><option value="">Todas</option></select></label>
-                <label>Categoría<select id="filterCategory"><option value="">Todas</option></select></label>
-                <label>Fecha desde<input id="filterDateFrom" type="date" /></label>
-                <label>Fecha hasta<input id="filterDateTo" type="date" /></label>
-              </div>
-            </section>
 
             <section class="panel dashboard-panel">
               <div class="section-head">
@@ -105,7 +91,7 @@
                   </label>
                 </div>
               </div>
-              <p class="table-hint">Hacé click en una fila para ver el detalle completo (resumen, acción, riesgo, áreas y razonamiento).</p>
+              <p class="table-hint">Hacé click en una alerta para abrir su detalle completo (resumen, acción, riesgo, áreas y razonamiento).</p>
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -125,10 +111,22 @@
           </section>
 
           <!-- ════ Vista: Informes ════ -->
-          <section class="view" data-view="informes">
+          <section class="view active" data-view="informes">
+            <div class="informes-actionbar">
+              <div class="informes-actionbar-info">
+                <span class="actionbar-label">Última ejecución del agente</span>
+                <span id="informesLastRun" class="actionbar-value">—</span>
+              </div>
+              <div class="informes-actionbar-buttons">
+                <button id="configAgentBtn" class="secondary">⚙️ Configurar agente</button>
+                <button id="quickRunAgentBtn">▶ Ejecutar agente</button>
+              </div>
+            </div>
+            <p id="informesStatus" class="status"></p>
             <section class="panel">
               <div class="section-head">
                 <h2>Historial de ejecuciones del agente</h2>
+                <button id="downloadReportHtml" class="secondary small" hidden>⬇️ Descargar HTML</button>
               </div>
               <div class="run-history-layout">
                 <div id="runHistory" class="run-history"></div>
@@ -137,41 +135,16 @@
             </section>
           </section>
 
-          <!-- ════ Vista: Configuración ════ -->
-          <section class="view" data-view="config">
+          <!-- ════ Vista: Agente ════ -->
+          <section class="view" data-view="agente">
             <div class="config-stack">
 
-              <!-- Perfil de empresa -->
-              <section class="panel profile-panel">
-                <h2>Perfil de empresa</h2>
-                <form id="profileForm" class="grid-form">
-                  <label>Nombre de empresa<input name="company_name" required /></label>
-                  <label class="full">Industrias
-                    <div class="industry-chips" id="industryChips">
-                      <label class="chip-check"><input type="checkbox" value="Cosmética y cuidado personal" /> Cosmética</label>
-                      <label class="chip-check"><input type="checkbox" value="Farmacéutica / OTC" /> Farmacéutica / OTC</label>
-                      <label class="chip-check"><input type="checkbox" value="Alimentos y bebidas" /> Alimentos</label>
-                      <label class="chip-check"><input type="checkbox" value="Suplementos y nutracéuticos" /> Suplementos</label>
-                      <label class="chip-check"><input type="checkbox" value="Dispositivos médicos" /> Dispositivos médicos</label>
-                      <label class="chip-check"><input type="checkbox" value="Higiene y limpieza" /> Higiene</label>
-                      <div class="chip-custom-row">
-                        <input id="industryCustomInput" type="text" placeholder="Otra industria..." />
-                        <button type="button" id="addIndustryBtn" class="secondary small">+</button>
-                      </div>
-                    </div>
-                  </label>
-                  <label>Países<input name="countries" placeholder="Argentina, México, Brasil" /></label>
-                  <label>Categorías de producto<input name="product_categories" placeholder="OTC, cosmética, alimentos" /></label>
-                  <label>Palabras clave<input name="keywords" placeholder="rotulado, registro, farmacovigilancia" /></label>
-                  <label>Temas excluidos<input name="excluded_topics" placeholder="armas, minería" /></label>
-                  <label>Áreas internas<input name="internal_areas" placeholder="Regulatorio, Legal, Calidad" /></label>
-                  <label class="full">Descripción de la empresa
-                    <textarea name="company_description" rows="3" placeholder="Describí brevemente qué hace tu empresa, qué productos comercializa y en qué mercados opera. Esto ayuda al agente a evaluar el impacto de cada alerta."></textarea>
-                  </label>
-                  <label class="full">Notas adicionales<textarea name="notes" rows="2"></textarea></label>
-                  <button type="submit">Guardar perfil</button>
-                </form>
-                <p id="profileStatus" class="status"></p>
+              <!-- Estado de la última corrida -->
+              <section class="panel agent-status-panel">
+                <h2>Estado del agente</h2>
+                <div id="agentRunSummary" class="agent-run-summary">
+                  <p class="run-empty">Todavía no hay ejecuciones registradas.</p>
+                </div>
               </section>
 
               <!-- Agente regulatorio -->
@@ -231,6 +204,46 @@
                 </div>
                 <div id="agentPreview" class="agent-preview" hidden></div>
                 <p id="agentStatus" class="status"></p>
+              </section>
+
+            </div>
+          </section>
+
+          <!-- ════ Vista: Configuración ════ -->
+          <section class="view" data-view="config">
+            <div class="config-stack">
+
+              <!-- Perfil de empresa -->
+              <section class="panel profile-panel">
+                <h2>Perfil de empresa</h2>
+                <form id="profileForm" class="grid-form">
+                  <label>Nombre de empresa<input name="company_name" required /></label>
+                  <label class="full">Industrias
+                    <div class="industry-chips" id="industryChips">
+                      <label class="chip-check"><input type="checkbox" value="Cosmética y cuidado personal" /> Cosmética</label>
+                      <label class="chip-check"><input type="checkbox" value="Farmacéutica / OTC" /> Farmacéutica / OTC</label>
+                      <label class="chip-check"><input type="checkbox" value="Alimentos y bebidas" /> Alimentos</label>
+                      <label class="chip-check"><input type="checkbox" value="Suplementos y nutracéuticos" /> Suplementos</label>
+                      <label class="chip-check"><input type="checkbox" value="Dispositivos médicos" /> Dispositivos médicos</label>
+                      <label class="chip-check"><input type="checkbox" value="Higiene y limpieza" /> Higiene</label>
+                      <div class="chip-custom-row">
+                        <input id="industryCustomInput" type="text" placeholder="Otra industria..." />
+                        <button type="button" id="addIndustryBtn" class="secondary small">+</button>
+                      </div>
+                    </div>
+                  </label>
+                  <label>Países<input name="countries" placeholder="Argentina, México, Brasil" /></label>
+                  <label>Categorías de producto<input name="product_categories" placeholder="OTC, cosmética, alimentos" /></label>
+                  <label>Palabras clave<input name="keywords" placeholder="rotulado, registro, farmacovigilancia" /></label>
+                  <label>Temas excluidos<input name="excluded_topics" placeholder="armas, minería" /></label>
+                  <label>Áreas internas<input name="internal_areas" placeholder="Regulatorio, Legal, Calidad" /></label>
+                  <label class="full">Descripción de la empresa
+                    <textarea name="company_description" rows="3" placeholder="Describí brevemente qué hace tu empresa, qué productos comercializa y en qué mercados opera. Esto ayuda al agente a evaluar el impacto de cada alerta."></textarea>
+                  </label>
+                  <label class="full">Notas adicionales<textarea name="notes" rows="2"></textarea></label>
+                  <button type="submit">Guardar perfil</button>
+                </form>
+                <p id="profileStatus" class="status"></p>
               </section>
 
             </div>
@@ -332,22 +345,22 @@
           </div>
           <div class="ob-nav">
             <button class="ob-back secondary" data-target="2">← Anterior</button>
-            <button id="ob-next-3">Ver mi reporte →</button>
+            <button id="ob-next-3">Guardar perfil →</button>
           </div>
         </div>
 
         <!-- Step 4 -->
         <div class="ob-pane" id="ob-pane-4" hidden>
-          <h2>Tu primer reporte regulatorio</h2>
-          <p class="ob-subtitle">Analizando alertas regulatorias para <strong id="ob-company-display"></strong>…</p>
+          <h2>Perfil configurado</h2>
+          <p class="ob-subtitle">Guardando el perfil de <strong id="ob-company-display"></strong>…</p>
           <div id="ob-loading" class="ob-loading">
             <div class="ob-spinner"></div>
-            <p id="ob-loading-msg">Cargando alertas regulatorias…</p>
+            <p id="ob-loading-msg">Guardando tu perfil…</p>
           </div>
           <div id="ob-report-preview" hidden>
-            <div id="ob-mini-metrics" class="ob-mini-metrics"></div>
             <div class="ob-report-box">
-              <pre id="ob-report-text"></pre>
+              <p>✅ Tu perfil de empresa quedó guardado.</p>
+              <p>El agente traerá las alertas regulatorias desde Supabase, las evaluará con IA y generará tu informe semanal. Ejecutalo cuando quieras desde la vista <strong>Informes</strong>.</p>
             </div>
           </div>
           <p id="ob-error-4" class="ob-error" hidden></p>
@@ -363,7 +376,20 @@
     <!-- Print-only report container -->
     <div id="print-report" class="print-only"></div>
 
-    <script src="/app.js?v=8"></script>
-    <script src="/onboarding.js?v=5"></script>
+    <!-- Drawer de detalle de alerta evaluada -->
+    <div id="alertDetailOverlay" class="drawer-overlay" hidden></div>
+    <aside id="alertDetailDrawer" class="detail-drawer" hidden aria-labelledby="alertDetailTitle">
+      <header class="drawer-head">
+        <div class="drawer-head-text">
+          <span id="alertDetailMeta" class="drawer-meta"></span>
+          <h2 id="alertDetailTitle">Detalle de la alerta</h2>
+        </div>
+        <button id="alertDetailClose" class="icon-btn" aria-label="Cerrar detalle">✕</button>
+      </header>
+      <div id="alertDetailBody" class="drawer-body"></div>
+    </aside>
+
+    <script src="/app.js?v=12"></script>
+    <script src="/onboarding.js?v=6"></script>
   </body>
 </html>

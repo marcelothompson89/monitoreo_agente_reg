@@ -112,23 +112,7 @@
       // Store company id for multi-empresa
       localStorage.setItem("company_id", saved.id);
 
-      setMsg("Cargando alertas regulatorias de ANMAT, COFEPRIS, ANVISA…");
-      const demoResult = await apiFetch("/load-demo-data", { method: "POST" });
-
-      setMsg(`Evaluando ${demoResult.inserted || "las"} alertas con tu perfil…`);
-      await apiFetch(`/evaluate-alerts?company_id=${saved.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit: 15 }),
-      });
-
-      setMsg("Generando tu reporte personalizado…");
-      const summary = await apiFetch(`/dashboard-summary?company_id=${saved.id}`);
-      const report = await apiFetch(`/generate-report?company_id=${saved.id}`);
-
       $("#ob-loading").hidden = true;
-      renderMiniMetrics(summary);
-      $("#ob-report-text").textContent = report.slice(0, 2500) + (report.length > 2500 ? "\n\n…(ver reporte completo en el dashboard)" : "");
       $("#ob-report-preview").hidden = false;
       $("#ob-nav-4").hidden = false;
     } catch (err) {
@@ -146,25 +130,12 @@
     if (typeof refreshAll === "function") refreshAll();
   });
 
-  function renderMiniMetrics(summary) {
-    const items = [
-      ["total_alerts", "Alertas analizadas"],
-      ["relevant_alerts", "Relevantes para vos"],
-      ["priority_high", "Prioridad alta"],
-      ["requires_human_review", "Requieren revisión"],
-    ];
-    $("#ob-mini-metrics").innerHTML = items
-      .map(([key, label]) => `
-        <div class="ob-metric">
-          <span class="ob-metric-value">${summary[key] || 0}</span>
-          <span class="ob-metric-label">${label}</span>
-        </div>`)
-      .join("");
-  }
-
   function setMsg(msg) { $("#ob-loading-msg").textContent = msg; }
 
   async function apiFetch(path, options = {}) {
+    // Adjunta X-API-Key si hay una guardada (backend con APP_API_KEY); en dev no hace nada.
+    const key = localStorage.getItem("app_api_key");
+    if (key) options = { ...options, headers: { ...(options.headers || {}), "X-API-Key": key } };
     const res = await fetch(path, options);
     if (!res.ok) {
       let msg = "Error desconocido";
