@@ -32,7 +32,7 @@ App runs at `http://127.0.0.1:8000`. Static files from `frontend/` are mounted a
 `.env` controls OpenAI integration:
 ```env
 OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-6-luna
 ```
 
 Additional optional env vars:

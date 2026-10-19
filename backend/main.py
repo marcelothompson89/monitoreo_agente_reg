@@ -205,6 +205,8 @@ def assessments(
     country: str | None = None,
     institution: str | None = None,
     requires_human_review: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     company_id: int | None = Query(None),
 ) -> dict[str, Any]:
     profile = get_active_company_profile(company_id)
@@ -215,15 +217,21 @@ def assessments(
             "country": country,
             "institution": institution,
             "requires_human_review": requires_human_review,
+            "date_from": date_from,
+            "date_to": date_to,
         }
     )
     return {"items": items, "count": len(items)}
 
 
 @app.get("/dashboard-summary")
-def dashboard_summary(company_id: int | None = Query(None)) -> dict[str, int]:
+def dashboard_summary(
+    company_id: int | None = Query(None),
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, int]:
     profile = get_active_company_profile(company_id)
-    return get_dashboard_summary(profile["id"] if profile else None)
+    return get_dashboard_summary(profile["id"] if profile else None, date_from, date_to)
 
 
 @app.get("/generate-report", response_class=PlainTextResponse)

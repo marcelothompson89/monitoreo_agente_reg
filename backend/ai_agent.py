@@ -405,7 +405,7 @@ def evaluate_alert(alert: dict[str, Any], company_profile: dict[str, Any]) -> di
         from openai import OpenAI
 
         client = OpenAI()
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        model = os.getenv("OPENAI_MODEL", "gpt-6-luna")
         prompt = PROMPT_TEMPLATE.format(
             company_profile=json.dumps(_pick(company_profile, _PROFILE_FIELDS_FOR_AI), ensure_ascii=False, indent=2),
             alert=json.dumps(_pick(alert, _ALERT_FIELDS_FOR_AI), ensure_ascii=False, indent=2),
@@ -438,11 +438,12 @@ def evaluate_alert(alert: dict[str, Any], company_profile: dict[str, Any]) -> di
             kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
-                "temperature": 0.2,
                 "response_format": {"type": "json_object"},
             }
             if use_tools:
                 kwargs["tools"] = TOOLS_SPEC
+                # Este modelo no admite function tools junto con reasoning_effort en chat/completions.
+                kwargs["extra_body"] = {"reasoning_effort": "none"}
             response = client.chat.completions.create(**kwargs)
             message = response.choices[0].message
             tool_calls = getattr(message, "tool_calls", None)
@@ -473,7 +474,6 @@ def evaluate_alert(alert: dict[str, Any], company_profile: dict[str, Any]) -> di
         final = client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.2,
             response_format={"type": "json_object"},
         )
         return _finish(final.choices[0].message.content)

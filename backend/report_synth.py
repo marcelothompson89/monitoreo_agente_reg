@@ -99,12 +99,11 @@ def synthesize_report(
             alerts=json.dumps(alerts, ensure_ascii=False, indent=2),
         )
         response = client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            model=os.getenv("OPENAI_MODEL", "gpt-6-luna"),
             messages=[
                 {"role": "system", "content": "Respondé solo con JSON válido, sin Markdown."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.3,
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content or "{}"

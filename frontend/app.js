@@ -188,6 +188,94 @@ function addCustomIndustryChip(containerId, value) {
   container.insertBefore(label, customRow);
 }
 
+// ── Tag input widget (campos de listas: países, categorías, keywords…) ──
+// Guarda el array de valores en container._tags; la coma deja de ser un
+// separador frágil dentro de un input y los valores se ven como chips.
+function getTags(container) {
+  return container && container._tags ? container._tags.slice() : [];
+}
+
+function renderTagChips(container) {
+  const chips = container.querySelector(".tag-chips");
+  const tags = container._tags || [];
+  chips.innerHTML = tags
+    .map((t, i) => `<span class="tag-chip">${escapeHtml(t)}<button type="button" class="tag-remove" data-index="${i}" aria-label="Quitar ${escapeHtml(t)}">✕</button></span>`)
+    .join("");
+}
+
+function setTags(container, values) {
+  if (!container) return;
+  const seen = new Set();
+  container._tags = [];
+  (values || []).forEach((v) => {
+    const t = String(v).trim();
+    if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); container._tags.push(t); }
+  });
+  renderTagChips(container);
+}
+
+// Agrega uno o varios valores (raw puede traer comas: se separan con splitList).
+function addTags(container, raw) {
+  const incoming = splitList(raw);
+  if (!incoming.length) return;
+  container._tags = container._tags || [];
+  const seen = new Set(container._tags.map((t) => t.toLowerCase()));
+  incoming.forEach((t) => {
+    if (!seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); container._tags.push(t); }
+  });
+  renderTagChips(container);
+}
+
+function removeTagAt(container, index) {
+  if (!container._tags) return;
+  container._tags.splice(index, 1);
+  renderTagChips(container);
+}
+
+// Delegación de eventos para todos los .tag-input dentro del formulario de perfil.
+const profileFormEl = $("#profileForm");
+if (profileFormEl) {
+  profileFormEl.addEventListener("keydown", (event) => {
+    const entry = event.target.closest(".tag-entry");
+    if (!entry) return;
+    const container = entry.closest(".tag-input");
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      addTags(container, entry.value);
+      entry.value = "";
+    } else if (event.key === "Backspace" && entry.value === "" && (container._tags || []).length) {
+      event.preventDefault();
+      removeTagAt(container, container._tags.length - 1);
+    }
+  });
+  // Al salir del campo, consolidar lo que quedó tipeado sin Enter.
+  profileFormEl.addEventListener("blur", (event) => {
+    const entry = event.target.closest(".tag-entry");
+    if (!entry || !entry.value.trim()) return;
+    addTags(entry.closest(".tag-input"), entry.value);
+    entry.value = "";
+  }, true);
+  profileFormEl.addEventListener("click", (event) => {
+    const remove = event.target.closest(".tag-remove");
+    if (remove) {
+      removeTagAt(remove.closest(".tag-input"), Number(remove.dataset.index));
+      return;
+    }
+    const add = event.target.closest(".tag-add");
+    if (add) {
+      const container = add.closest(".tag-input");
+      const entry = container.querySelector(".tag-entry");
+      addTags(container, entry.value);
+      entry.value = "";
+      entry.focus();
+    }
+  });
+}
+
+function tagContainer(field) {
+  return document.querySelector(`#profileForm .tag-input[data-field="${field}"]`);
+}
+
 async function loadProfile() {
   const cid = activeCompanyId();
   const qs = cid ? `?company_id=${cid}` : "";
@@ -197,11 +285,11 @@ async function loadProfile() {
   const form = $("#profileForm");
   form.company_name.value = profile.company_name || "";
   setCheckedIndustries("industryChips", profile.industry || []);
-  form.countries.value = (profile.countries || []).join(", ");
-  form.product_categories.value = (profile.product_categories || []).join(", ");
-  form.keywords.value = (profile.keywords || []).join(", ");
-  form.excluded_topics.value = (profile.excluded_topics || []).join(", ");
-  form.internal_areas.value = (profile.internal_areas || []).join(", ");
+  setTags(tagContainer("countries"), profile.countries || []);
+  setTags(tagContainer("product_categories"), profile.product_categories || []);
+  setTags(tagContainer("keywords"), profile.keywords || []);
+  setTags(tagContainer("excluded_topics"), profile.excluded_topics || []);
+  setTags(tagContainer("internal_areas"), profile.internal_areas || []);
   form.company_description.value = profile.company_description || "";
   form.notes.value = profile.notes || "";
 
@@ -217,8 +305,17 @@ function toQuery(params) {
   return query.toString();
 }
 
+// Rango de fechas elegido en el dashboard (aplica a KPIs y listado).
+function dashDateParams() {
+  return {
+    date_from: $("#dashDateFrom")?.value || "",
+    date_to: $("#dashDateTo")?.value || "",
+  };
+}
+
 async function loadSummary() {
-  const summary = await api(`/dashboard-summary?${companyQuery()}`);
+  const params = withCompany({ ...dashDateParams() });
+  const summary = await api(`/dashboard-summary?${toQuery(params)}`);
   const cards = [
     ["total_alerts", "Total de alertas"],
     ["evaluated_alerts", "Alertas evaluadas"],
@@ -336,6 +433,7 @@ async function loadAssessments() {
     country: $("#dashCountry").value,
     institution: $("#dashInstitution").value,
     requires_human_review: $("#dashReview").value,
+    ...dashDateParams(),
   });
   const data = await api(`/assessments?${toQuery(params)}`);
   const rows = $("#assessmentRows");
@@ -705,11 +803,11 @@ $("#profileForm").addEventListener("submit", async (event) => {
     id: form.dataset.profileId ? Number(form.dataset.profileId) : undefined,
     company_name: form.company_name.value,
     industry: getCheckedIndustries("industryChips"),
-    countries: splitList(form.countries.value),
-    product_categories: splitList(form.product_categories.value),
-    keywords: splitList(form.keywords.value),
-    excluded_topics: splitList(form.excluded_topics.value),
-    internal_areas: splitList(form.internal_areas.value),
+    countries: getTags(tagContainer("countries")),
+    product_categories: getTags(tagContainer("product_categories")),
+    keywords: getTags(tagContainer("keywords")),
+    excluded_topics: getTags(tagContainer("excluded_topics")),
+    internal_areas: getTags(tagContainer("internal_areas")),
     company_description: form.company_description.value,
     notes: form.notes.value,
   };
@@ -732,23 +830,46 @@ $("#profileForm").addEventListener("submit", async (event) => {
 });
 
 // Agent panel
+// Empresa para la que la grilla de fuentes está cargada (null = no cargada todavía).
+// persistAgentConfig solo envía alert_sources cuando coincide con la empresa activa:
+// si se guarda mientras /alert-sources sigue cargando (tarda, pagina Supabase) o
+// falló, la grilla no tiene checkboxes y getCheckedSources() devolvería [] pisando
+// las fuentes guardadas.
+let agentSourcesLoadedFor = null;
+
 async function loadAgentSources() {
+  const companyId = activeCompanyId();
+  agentSourcesLoadedFor = null;
+  const container = $("#agentSources");
+  container.innerHTML = `<span class="sources-loading">Cargando fuentes…</span>`;
   try {
-    const data = await api("/alert-sources");
-    const container = $("#agentSources");
-    if (!data.sources || !data.sources.length) {
+    const [data, status] = await Promise.all([
+      api("/alert-sources"),
+      api(`/agent-status?${companyQuery()}`),
+    ]);
+    // Se cambió de empresa mientras cargaba: la carga nueva se encarga de pintar.
+    if (activeCompanyId() !== companyId) return;
+    const savedSources = status.alert_sources || [];
+    // Las fuentes guardadas que no vienen en la lista disponible se muestran
+    // igual (tildadas) para no perderlas al volver a guardar.
+    const sources = [...(data.sources || [])];
+    savedSources.forEach((src) => { if (!sources.includes(src)) sources.push(src); });
+    if (!sources.length) {
       container.innerHTML = `<span class="sources-loading">No se encontraron fuentes. Verificá la conexión a Supabase y las credenciales en <code>.env</code>.</span>`;
       return;
     }
-    const savedSources = (await api(`/agent-status?${companyQuery()}`)).alert_sources || [];
-    container.innerHTML = data.sources.map((src) => `
+    container.innerHTML = sources.map((src) => `
       <label class="ob-check agent-source-check">
         <input type="checkbox" value="${escapeHtml(src)}" ${savedSources.includes(src) ? "checked" : ""} />
         ${escapeHtml(src)}
       </label>
     `).join("");
+    agentSourcesLoadedFor = companyId;
   } catch (e) {
     console.warn("loadAgentSources:", e);
+    if (activeCompanyId() === companyId) {
+      container.innerHTML = `<span class="sources-loading">No se pudieron cargar las fuentes (${escapeHtml(e.message)}). Las fuentes guardadas no se modifican.</span>`;
+    }
   }
 }
 
@@ -827,11 +948,15 @@ async function persistAgentConfig(statusEl = $("#agentStatus")) {
     id: Number(form.dataset.profileId),
     email_recipients: splitList($("#agentEmails").value),
     days_back: Number($("#agentDaysBack").value || 7),
-    alert_sources: getCheckedSources(),
     agent_date_from: isRange ? ($("#agentDateFrom").value || "") : "",
     agent_date_to: isRange ? ($("#agentDateTo").value || "") : "",
     agent_max_eval: Number($("#agentMaxEval").value || 100),
   };
+  // Solo pisar las fuentes si la grilla está cargada para esta empresa; si no,
+  // se conservan las guardadas (vienen en existingProfile).
+  if (agentSourcesLoadedFor === activeCompanyId()) {
+    payload.alert_sources = getCheckedSources();
+  }
   await api("/company-profile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -951,6 +1076,22 @@ function markdownToHtml(md) {
   $(`#${id}`).addEventListener("change", loadAssessments);
 });
 
+// El rango de fechas afecta KPIs y listado, así que recarga ambos.
+async function reloadDashboardByDate() {
+  await loadSummary().catch((e) => console.warn("loadSummary:", e));
+  await loadAssessments().catch((e) => console.warn("loadAssessments:", e));
+}
+["dashDateFrom", "dashDateTo"].forEach((id) => {
+  $(`#${id}`)?.addEventListener("change", reloadDashboardByDate);
+});
+$("#dashClearFilters")?.addEventListener("click", () => {
+  ["dashPriority", "dashCountry", "dashInstitution", "dashReview", "dashDateFrom", "dashDateTo"].forEach((id) => {
+    const el = $(`#${id}`);
+    if (el) el.value = "";
+  });
+  reloadDashboardByDate();
+});
+
 // Clic/Enter en una fila → abrir el drawer con el detalle de la evaluación IA.
 function openDrawerFromRow(row) {
   const item = assessmentsByIndex[Number(row.dataset.index)];
@@ -980,8 +1121,6 @@ document.addEventListener("keydown", (event) => {
     closeAlertDrawer();
   }
 });
-
-$("#refreshBtn").addEventListener("click", refreshAll);
 
 refreshAll().catch((error) => {
   console.error(error);

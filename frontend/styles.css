@@ -279,6 +279,53 @@ button.small {
   font-size: 13px;
 }
 
+/* ── Tag input (listas: países, categorías, keywords, excluidos, áreas) ── */
+/* Cada campo de etiquetas ocupa todo el ancho y se apila, así los chips
+   largos no se cortan y se aprovecha el espacio horizontal. */
+.grid-form label:has(.tag-input) { grid-column: 1 / -1; }
+
+/* Mismo look que el campo Industrias: caja con píldoras + fila para agregar. */
+.tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+.tag-input .tag-chips {
+  display: contents;
+}
+/* Píldora estilo .chip-check pero sin checkbox: el valor + la ✕ para quitar. */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  white-space: nowrap;
+}
+.tag-remove {
+  border: none;
+  background: transparent;
+  color: #6b7680;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 999px;
+}
+.tag-remove:hover { color: var(--danger); }
+.tag-input .chip-custom-row .tag-entry {
+  min-width: 140px;
+  font-size: 12px;
+}
+
 /* ── Metrics ── */
 .metrics {
   display: grid;

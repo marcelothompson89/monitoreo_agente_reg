@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agente de Monitoreo Regulatorio</title>
-    <link rel="stylesheet" href="/styles.css?v=10" />
+    <link rel="stylesheet" href="/styles.css?v=13" />
   </head>
   <body>
     <div class="app">
@@ -40,7 +40,6 @@
               <select id="companySelect"></select>
               <button id="newCompanyBtn" class="secondary small">+ Nueva empresa</button>
             </div>
-            <button id="refreshBtn" class="secondary">Actualizar</button>
           </div>
         </header>
 
@@ -71,6 +70,8 @@
               <div class="section-head">
                 <h2>Alertas evaluadas</h2>
                 <div class="filters compact">
+                  <label>Desde<input type="date" id="dashDateFrom" /></label>
+                  <label>Hasta<input type="date" id="dashDateTo" /></label>
                   <label>Prioridad
                     <select id="dashPriority">
                       <option value="">Todas</option>
@@ -89,6 +90,7 @@
                       <option value="false">No requiere</option>
                     </select>
                   </label>
+                  <button type="button" id="dashClearFilters" class="secondary small">Limpiar</button>
                 </div>
               </div>
               <p class="table-hint">Hacé click en una alerta para abrir su detalle completo (resumen, acción, riesgo, áreas y razonamiento).</p>
@@ -232,11 +234,51 @@
                       </div>
                     </div>
                   </label>
-                  <label>Países<input name="countries" placeholder="Argentina, México, Brasil" /></label>
-                  <label>Categorías de producto<input name="product_categories" placeholder="OTC, cosmética, alimentos" /></label>
-                  <label>Palabras clave<input name="keywords" placeholder="rotulado, registro, farmacovigilancia" /></label>
-                  <label>Temas excluidos<input name="excluded_topics" placeholder="armas, minería" /></label>
-                  <label>Áreas internas<input name="internal_areas" placeholder="Regulatorio, Legal, Calidad" /></label>
+                  <label>Países
+                    <div class="tag-input" data-field="countries">
+                      <div class="tag-chips"></div>
+                      <div class="chip-custom-row">
+                        <input type="text" class="tag-entry" placeholder="Agregar país (ej: Argentina)…" />
+                        <button type="button" class="tag-add secondary small">+</button>
+                      </div>
+                    </div>
+                  </label>
+                  <label>Categorías de producto
+                    <div class="tag-input" data-field="product_categories">
+                      <div class="tag-chips"></div>
+                      <div class="chip-custom-row">
+                        <input type="text" class="tag-entry" placeholder="Agregar categoría (ej: OTC)…" />
+                        <button type="button" class="tag-add secondary small">+</button>
+                      </div>
+                    </div>
+                  </label>
+                  <label>Palabras clave
+                    <div class="tag-input" data-field="keywords">
+                      <div class="tag-chips"></div>
+                      <div class="chip-custom-row">
+                        <input type="text" class="tag-entry" placeholder="Agregar palabra clave (ej: rotulado)…" />
+                        <button type="button" class="tag-add secondary small">+</button>
+                      </div>
+                    </div>
+                  </label>
+                  <label>Temas excluidos
+                    <div class="tag-input" data-field="excluded_topics">
+                      <div class="tag-chips"></div>
+                      <div class="chip-custom-row">
+                        <input type="text" class="tag-entry" placeholder="Agregar tema a excluir (ej: armas)…" />
+                        <button type="button" class="tag-add secondary small">+</button>
+                      </div>
+                    </div>
+                  </label>
+                  <label>Áreas internas
+                    <div class="tag-input" data-field="internal_areas">
+                      <div class="tag-chips"></div>
+                      <div class="chip-custom-row">
+                        <input type="text" class="tag-entry" placeholder="Agregar área (ej: Regulatorio)…" />
+                        <button type="button" class="tag-add secondary small">+</button>
+                      </div>
+                    </div>
+                  </label>
                   <label class="full">Descripción de la empresa
                     <textarea name="company_description" rows="3" placeholder="Describí brevemente qué hace tu empresa, qué productos comercializa y en qué mercados opera. Esto ayuda al agente a evaluar el impacto de cada alerta."></textarea>
                   </label>
@@ -389,7 +431,7 @@
       <div id="alertDetailBody" class="drawer-body"></div>
     </aside>
 
-    <script src="/app.js?v=12"></script>
+    <script src="/app.js?v=14"></script>
     <script src="/onboarding.js?v=6"></script>
   </body>
 </html>

@@ -549,28 +549,54 @@ def get_assessments(filters: dict[str, Any] | None = None) -> list[dict[str, Any
     return assessments
 
 
-def get_dashboard_summary(company_id: int | None = None) -> dict[str, int]:
-    params: list[Any] = []
-    company_clause = ""
+def get_dashboard_summary(
+    company_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, int]:
+    # Filtro de fecha por presentation_date de la alerta (consistente con la
+    # columna "Fecha" del dashboard y con get_assessments).
+    date_clauses: list[str] = []
+    date_params: list[Any] = []
+    if date_from:
+        date_clauses.append("a.presentation_date >= ?")
+        date_params.append(date_from)
+    if date_to:
+        date_clauses.append("a.presentation_date <= ?")
+        date_params.append(date_to)
+
+    # Total de alertas: mismo rango de fechas para que el KPI sea coherente.
+    total_clauses = [c.replace("a.", "") for c in date_clauses]
+    total_where = f"WHERE {' AND '.join(total_clauses)}" if total_clauses else ""
+
+    eval_clauses: list[str] = []
+    eval_params: list[Any] = []
     if company_id:
-        company_clause = "WHERE company_id = ?"
-        params.append(company_id)
+        eval_clauses.append("aa.company_id = ?")
+        eval_params.append(company_id)
+    eval_clauses.extend(date_clauses)
+    eval_params.extend(date_params)
+    eval_where = f"WHERE {' AND '.join(eval_clauses)}" if eval_clauses else ""
 
     with get_connection() as conn:
-        total_alerts = conn.execute("SELECT COUNT(*) AS total FROM regulatory_alerts").fetchone()["total"]
+        total_alerts = conn.execute(
+            f"SELECT COUNT(*) AS total FROM regulatory_alerts a {total_where}",
+            date_params,
+        ).fetchone()["total"]
         row = conn.execute(
             f"""
             SELECT
                 COUNT(*) AS evaluated,
-                SUM(CASE WHEN is_relevant = 1 THEN 1 ELSE 0 END) AS relevant,
-                SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) AS high,
-                SUM(CASE WHEN priority = 'media' THEN 1 ELSE 0 END) AS medium,
-                SUM(CASE WHEN priority = 'baja' THEN 1 ELSE 0 END) AS low,
-                SUM(CASE WHEN requires_human_review = 1 THEN 1 ELSE 0 END) AS human_review
-            FROM alert_assessments
-            {company_clause}
+                SUM(CASE WHEN aa.is_relevant = 1 THEN 1 ELSE 0 END) AS relevant,
+                SUM(CASE WHEN aa.priority = 'alta' THEN 1 ELSE 0 END) AS high,
+                SUM(CASE WHEN aa.priority = 'media' THEN 1 ELSE 0 END) AS medium,
+                SUM(CASE WHEN aa.priority = 'baja' THEN 1 ELSE 0 END) AS low,
+                SUM(CASE WHEN aa.requires_human_review = 1 THEN 1 ELSE 0 END) AS human_review
+            FROM alert_assessments aa
+            JOIN regulatory_alerts a ON a.id = aa.alert_id
+            {eval_where}
             """,
-            params,
+            eval_params,
         ).fetchone()
 
     return {
